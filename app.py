@@ -22,39 +22,48 @@ def prepare_input(data, time_steps):
 # Streamlit app interface
 st.title("Tourist Arrival Forecasting with Attention-Enhanced LSTM")
 
-# Sidebar for file upload
-st.sidebar.title("Upload Your CSV File")
-uploaded_file = st.sidebar.file_uploader("Upload your CSV file", type=["csv"])
+# Sidebar for file upload or manual entry
+st.sidebar.title("Data Input Options")
+
+# Option selection for data upload
+data_option = st.sidebar.radio("Choose data input method:", ("Upload CSV File", "Enter Data Manually"))
 
 data = None  # Initialize the data variable
 
-if uploaded_file is not None:
-    data = pd.read_csv(uploaded_file)
-    st.write("Uploaded Data:", data.head(), data.shape)
+# File upload option
+if data_option == "Upload CSV File":
+    uploaded_file = st.sidebar.file_uploader("Upload your CSV file", type=["csv"])
+    if uploaded_file is not None:
+        data = pd.read_csv(uploaded_file)
+        st.write("Uploaded Data:", data.head(), data.shape)
 
-    # Ensure the uploaded column is numeric and contains no NaN values
-    if "Tourist_Arrival" not in data.columns:
-        st.error("Column 'Tourist_Arrival' not found in the dataset. Please check your data.")
-    else:
-        # Check for missing values
-        if data["Tourist_Arrival"].isnull().any():
-            st.error("The column 'Tourist_Arrival' contains missing values. Please clean your data.")
+        # Ensure the uploaded column is numeric and contains no NaN values
+        if "Tourist_Arrival" not in data.columns:
+            st.error("Column 'Tourist_Arrival' not found in the dataset. Please check your data.")
         else:
-            # Ensure all values are numeric
-            try:
-                data["Tourist_Arrival"] = pd.to_numeric(data["Tourist_Arrival"], errors="coerce")
-                if data["Tourist_Arrival"].isnull().any():  # Re-check after coercion
-                    st.error("Some values in 'Tourist_Arrival' are not numeric and were converted to NaN. Please fix your data.")
-                else:
-                    st.write("Data is valid and ready for processing.")
-            except Exception as e:
-                st.error(f"An error occurred while validating the data: {e}")
+            if data["Tourist_Arrival"].isnull().any():
+                st.error("The column 'Tourist_Arrival' contains missing values. Please clean your data.")
+            else:
+                st.write("Data is valid and ready for processing.")
+
+# Manual data entry option
+elif data_option == "Enter Data Manually":
+    st.sidebar.write("Enter your data in the text area below as a list of numbers (e.g., 100, 200, 150, 180).")
+    manual_data = st.sidebar.text_area("Enter 'Tourist_Arrival' data:", value="100, 200, 150, 180")
+    
+    try:
+        # Parse the entered data
+        data_values = list(map(float, manual_data.split(",")))
+        data = pd.DataFrame({"Tourist_Arrival": data_values})
+        st.write("Manually Entered Data:", data.head(), data.shape)
+    except ValueError:
+        st.error("Invalid input. Please ensure all values are numeric and separated by commas.")
 
 # Ensure that we only use a maximum of 50 rows
 if data is not None:
     data = data.head(50)
 
-# Fixed time steps (remove user selection)
+# Fixed time steps
 time_steps = 10  # Set this to whatever fixed value you need, for example 10.
 
 # Slider for forecast months
@@ -63,7 +72,7 @@ forecast_months = st.sidebar.number_input("Months to Forecast", min_value=1, val
 # Process data and make predictions
 if st.sidebar.button("Generate Forecast"):
     if data is None:
-        st.error("Please upload a CSV file.")
+        st.error("Please provide data either by uploading a file or entering it manually.")
     elif len(data) < time_steps:
         st.error(f"The dataset must have at least {time_steps} rows to match the selected time window.")
     else:
