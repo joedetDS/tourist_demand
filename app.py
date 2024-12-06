@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import tensorflow as tf
+import joblib  # For loading the scaler
+import matplotlib.pyplot as plt
 
 # Load the pre-trained attention-enhanced model
 model = tf.keras.models.load_model('lstm_attention_total_arrival.h5')
