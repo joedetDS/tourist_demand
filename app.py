@@ -48,8 +48,8 @@ if data_option == "Upload CSV File":
 
 # Manual data entry option
 elif data_option == "Enter Data Manually":
-    st.sidebar.write("Enter your data in the text area below as a list of numbers (e.g., 100, 200, 150, 180).")
-    manual_data = st.sidebar.text_area("Enter 'Tourist_Arrival' data:", value="100, 200, 150, 180")
+    st.sidebar.write("Enter your data in the text area below as a list of numbers (e.g., 10500, 16000, 15000, 18000).")
+    manual_data = st.sidebar.text_area("Enter 'Tourist_Arrival' data:", value="10500, 16000, 15000, 18000")
     
     try:
         # Parse the entered data
