@@ -1,97 +1,128 @@
 import streamlit as st
 import pandas as pd
+import joblib
 import numpy as np
-import tensorflow as tf
-import joblib  # For loading the scalers
+from sklearn.preprocessing import OrdinalEncoder
+from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 
-# Load the pre-trained LSTM-Attention model
-model = tf.keras.models.load_model('lstm_attention_model.keras')
+# App title
+st.title("Tourism Demand Forecasting")
 
-# Load the pre-saved scalers
-scaler_features = joblib.load('scaler_features.pkl')
-scaler_target = joblib.load('scaler_target.pkl')
+# File uploader
+uploaded_file = st.file_uploader("Upload a CSV file", type=["csv"])
 
-# Function to prepare input data
-def prepare_input(data, time_steps):
-    X = []
-    for i in range(len(data) - time_steps):
-        X.append(data[i:i + time_steps])
-    return np.array(X)
-
-# Streamlit app interface
-st.title("Tourism Demand Forecasting with LSTM-Attention")
-
-# Sidebar for user inputs
-st.sidebar.title("User Input")
-
-# File upload for data input
-uploaded_file = st.sidebar.file_uploader("Upload your CSV file", type=["csv"])
-
-# User input for forecast months
-forecast_months = st.sidebar.number_input("Number of months to forecast", min_value=1, value=3, step=1)
-
-# Main processing
+# Check if a file is uploaded
 if uploaded_file is not None:
-    try:
-        # Load data
-        data = pd.read_csv(uploaded_file)
-        st.write("Uploaded Data:", data.head())
+    # Read the CSV file into a DataFrame
+    tourism_data = pd.read_csv(uploaded_file)
 
-        # Ensure required columns are present
-        required_columns = ['Humidity', 'Rainfall', 'Events', 'Weather', 'Tourism_Demand']
-        if not all(col in data.columns for col in required_columns):
-            st.error(f"Missing required columns. Ensure the dataset contains: {', '.join(required_columns)}.")
-        else:
-            # Separate features and target
-            features = ['Humidity', 'Rainfall', 'Events', 'Weather']
-            target = 'Tourism_Demand'
+    # Display the first five rows of the loaded dataset
+    st.write("First five rows of the uploaded dataset:")
+    st.dataframe(tourism_data.head())
+    
+    # Perform ordinal encoding on categorical columns
+    ordinal_encoder = OrdinalEncoder()
+    tourism_data[['Events', 'Weather']] = ordinal_encoder.fit_transform(
+        tourism_data[['Events', 'Weather']]
+    )
+    
+    # Load the pre-trained scalers
+    scaler_features_path = "scaler_features.pkl"
+    scaler_target_path = "scaler_target.pkl"
+    scaler_features = joblib.load(scaler_features_path)
+    scaler_target = joblib.load(scaler_target_path)
+    
+    # Select features and target
+    features = ['Humidity', 'Rainfall', 'Events', 'Weather']
+    target = 'Tourism_Demand'
 
-            X = data[features].values
-            y = data[[target]].values
+    # Scale features and target
+    scaled_features = scaler_features.transform(tourism_data[features])
+    scaled_target = scaler_target.transform(tourism_data[[target]])
+    
+    # Load the pre-trained LSTM model
+    model_save_path = "lstm_attention_model.keras"
+    loaded_model = load_model(model_save_path)
+    
+    # Prepare data for forecasting (time step = 12)
+    time_step = 12
+    if len(scaled_features) < time_step:
+        st.error("Not enough data points to make a forecast. At least 12 rows are required.")
+    else:
+        # Use the last 12 steps for forecasting
+        recent_data = scaled_features[-time_step:, :]
 
-            # Scale features and target
-            X_scaled = scaler_features.transform(X)
-            y_scaled = scaler_target.transform(y)
+        # User input for how many months to forecast using a slider
+        steps_ahead = st.slider("Select the number of months to forecast:", min_value=1, max_value=10, value=3)
 
-            # Prepare input data for time step = 12
-            time_steps = 12
-            X_prepared = prepare_input(X_scaled, time_steps)
-            y_prepared = y_scaled[time_steps:]
+        # Forecast function
+        def forecast_future_values(model, recent_data, scaler, steps_ahead=3):
+            predictions = []
+            current_input = recent_data
 
-            if len(X_prepared) == 0:
-                st.error(f"Not enough data to create time steps. Ensure the dataset has at least {time_steps} rows.")
-            else:
-                # Forecast
-                last_window = X_scaled[-time_steps:].reshape(1, time_steps, len(features))
-                forecast_values = []
+            for _ in range(steps_ahead):
+                # Predict the next value
+                next_value_scaled = model.predict(current_input[np.newaxis, :, :])[0, 0]
+                predictions.append(next_value_scaled)
 
-                for _ in range(forecast_months):
-                    next_prediction = model.predict(last_window)
-                    forecast_values.append(next_prediction[0, 0])
+                # Update the input: Remove the first time step and add the new prediction
+                next_input = np.append(current_input[1:], [[*current_input[-1, :-1], next_value_scaled]], axis=0)
+                current_input = next_input
 
-                    # Update the last window
-                    next_feature = np.append(last_window[:, 1:, :], next_prediction.reshape(1, 1, -1), axis=1)
-                    last_window = next_feature
+            # Transform predictions back to original scale
+            predictions_original_scale = scaler.inverse_transform(np.array(predictions).reshape(-1, 1)).flatten()
+            return predictions_original_scale
 
-                # Inverse transform the forecasted values
-                forecast_values = scaler_target.inverse_transform(np.array(forecast_values).reshape(-1, 1)).flatten()
+        # Generate forecast
+        future_predictions = forecast_future_values(loaded_model, recent_data, scaler_target, steps_ahead=steps_ahead)
 
-                # Display results
-                for month, value in enumerate(forecast_values, start=1):
-                    st.write(f"Forecast for month {month}: {value:.2f}")
+        # Round the predictions to the nearest integer
+        future_predictions_int = np.round(future_predictions).astype(int)
 
-                # Visualization
-                observed = data[target].values[-(len(y_prepared)):] if len(y_prepared) > 0 else []
+        # Display the forecasted values as integers
+        st.write(f"Forecasted Tourism Demand for the next {steps_ahead} months:")
+        forecast_df = pd.DataFrame({
+            "Month": [f"Month {i+1}" for i in range(steps_ahead)],
+            "Forecasted Demand": future_predictions_int
+        })
+        st.dataframe(forecast_df)
 
-                fig, ax = plt.subplots(figsize=(10, 6))
-                ax.plot(range(len(observed)), observed, label="Observed", color="blue")
-                ax.plot(range(len(observed), len(observed) + forecast_months), forecast_values, label="Forecasted", color="orange", marker='o')
-                ax.set_xlabel("Time [Months]")
-                ax.set_ylabel("Tourism Demand")
-                ax.set_title("Observed vs Predicted Tourism Demand")
-                ax.legend()
-                st.pyplot(fig)
+        # Create a line plot for "Dataset vs Forecast"
+        st.write("Dataset vs Forecast:")
+        plt.figure(figsize=(10, 4))
 
-    except Exception as e:
-        st.error(f"An error occurred: {e}")
+        # Plot the entire dataset as a line
+        plt.plot(
+            range(1, len(tourism_data) + 1), 
+            tourism_data[target], 
+            label="Dataset (Observed)", 
+            marker="o", 
+            color="blue"
+        )
+
+        # Plot forecast starting from the last data point
+        forecast_start = len(tourism_data)
+        plt.plot(
+            range(forecast_start + 1, forecast_start + steps_ahead + 1), 
+            future_predictions_int, 
+            label="Forecast", 
+            marker="x", 
+            color="red"
+        )
+
+        # Add vertical line to indicate forecast start
+        plt.axvline(x=forecast_start, color="gray", linestyle="--", label="Forecast Start")
+
+        # Set plot labels and title
+        plt.title("Dataset vs Forecast")
+        plt.xlabel("Time (Months)")
+        plt.ylabel("Tourism Demand")
+        plt.legend()
+        plt.grid(True)
+        
+        # Show the plot in Streamlit
+        st.pyplot(plt)
+
+else:
+    st.info("Please upload a CSV file to proceed.")
