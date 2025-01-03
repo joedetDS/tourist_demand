@@ -9,6 +9,17 @@ import matplotlib.pyplot as plt
 # App title
 st.title("Tourism Demand Forecasting")
 
+# Cache model and scalers for efficiency
+@st.cache_resource
+def load_model_and_scalers():
+    model = load_model("lstm_attention_model.keras")
+    scaler_features = joblib.load("scaler_features.pkl")
+    scaler_target = joblib.load("scaler_target.pkl")
+    return model, scaler_features, scaler_target
+
+# Load the pre-trained model and scalers
+loaded_model, scaler_features, scaler_target = load_model_and_scalers()
+
 # File uploader
 uploaded_file = st.file_uploader("Upload a CSV file", type=["csv"])
 
@@ -27,12 +38,6 @@ if uploaded_file is not None:
         tourism_data[['Events', 'Weather']]
     )
     
-    # Load the pre-trained scalers
-    scaler_features_path = "scaler_features.pkl"
-    scaler_target_path = "scaler_target.pkl"
-    scaler_features = joblib.load(scaler_features_path)
-    scaler_target = joblib.load(scaler_target_path)
-    
     # Select features and target
     features = ['Humidity', 'Rainfall', 'Events', 'Weather']
     target = 'Tourism_Demand'
@@ -40,10 +45,6 @@ if uploaded_file is not None:
     # Scale features and target
     scaled_features = scaler_features.transform(tourism_data[features])
     scaled_target = scaler_target.transform(tourism_data[[target]])
-    
-    # Load the pre-trained LSTM model
-    model_save_path = "lstm_attention_model.keras"
-    loaded_model = load_model(model_save_path)
     
     # Prepare data for forecasting (time step = 12)
     time_step = 12
@@ -54,7 +55,7 @@ if uploaded_file is not None:
         recent_data = scaled_features[-time_step:, :]
 
         # User input for how many months to forecast using a slider
-        steps_ahead = st.slider("Select the number of months to forecast:", min_value=1, max_value=10, value=3)
+        steps_ahead = st.slider("Select the number of months to forecast:", min_value=1, max_value=20, value=3)
 
         # Forecast function
         def forecast_future_values(model, recent_data, scaler, steps_ahead=3):
