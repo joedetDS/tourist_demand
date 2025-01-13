@@ -55,7 +55,7 @@ if uploaded_file is not None:
         recent_data = scaled_features[-time_step:, :]
 
         # User input for how many months to forecast using a slider
-        steps_ahead = st.slider("Select the number of months to forecast:", min_value=1, max_value=20, value=3)
+        steps_ahead = st.slider("Select the number of months to forecast:", min_value=1, max_value=10, value=3)
 
         # Forecast function
         def forecast_future_values(model, recent_data, scaler, steps_ahead=3):
